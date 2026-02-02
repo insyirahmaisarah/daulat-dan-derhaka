@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Daulat vs Derhaka: Tilt Game</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            text-align: center;
+            background-color: #f0f8ff;
+            margin: 0;
+            overflow: hidden;
+        }
+        #game-container {
+            max-width: 800px;
+            margin: auto;
+            padding: 20px;
+        }
+        #video-container {
+            position: relative;
+            width: 320px;
+            height: 240px;
+            margin: 10px auto;
+            border: 5px solid #333;
+            border-radius: 15px;
+            background: #000;
+        }
+        video {
+            width: 100%;
+            height: 100%;
+            transform: scaleX(-1); /* Mirror view for natural movement */
+        }
+        .instructions {
+            display: flex;
+            justify-content: space-around;
+            font-weight: bold;
+            font-size: 1.2rem;
+        }
+        .left-box { color: #d9534f; } /* Red for Derhaka */
+        .right-box { color: #5cb85c; } /* Green for Daulat */
+
+        #question-card {
+            background: white;
+            padding: 20px;
+            border-radius: 15px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+            margin-top: 20px;
+            min-height: 150px;
+        }
+        #feedback {
+            font-size: 1.5rem;
+            font-weight: bold;
+            margin-top: 10px;
+            height: 30px;
+        }
+        .explanation {
+            font-style: italic;
+            color: #555;
+            margin-top: 10px;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 1rem;
+            cursor: pointer;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <h1>👑 Daulat vs Derhaka 👑</h1>
+    <p>Tilt your head to choose the right answer!</p>
+
+    <div class="instructions">
+        <div class="left-box">⬅️ TILT LEFT<br>DERHAKA</div>
+        <div class="right-box">TILT RIGHT ➡️<br>DAULAT</div>
+    </div>
+
+    <div id="video-container">
+        <video id="webcam" autoplay playsinline></video>
+    </div>
+
+    <div id="question-card">
+        <h2 id="scenario-text">Loading game...</h2>
+        <p id="explanation-text" class="explanation"></p>
+        <div id="feedback"></div>
+        <button id="next-btn" style="display:none;" onclick="nextQuestion()">Next Question ➡️</button>
+    </div>
+</div>
+
+<script>
+    const videoElement = document.getElementById('webcam');
+    const scenarioElement = document.getElementById('scenario-text');
+    const feedbackElement = document.getElementById('feedback');
+    const explanationElement = document.getElementById('explanation-text');
+    const nextBtn = document.getElementById('next-btn');
+
+    let currentLevel = 0;
+    let canAnswer = true;
+
+    // Game Content
+    const questions = [
+        {
+            text: "A person follows the Sultan's orders and respects the law without complaining.",
+            answer: "right", // Daulat
+            explanation: "Correct! Being loyal and following the King is 'Daulat'."
+        },
+        {
+            text: "A leader refuses to follow the King's order because he wants more money for himself.",
+            answer: "left", // Derhaka
+            explanation: "Correct! Disobeying the King for selfish reasons is 'Derhaka'."
+        },
+        {
+            text: "Citizens protect their King and country from enemies, even when it is dangerous.",
+            answer: "right", // Daulat
+            explanation: "Correct! Loyalty to the country shows high sovereignty (Daulat)."
+        },
+        {
+            text: "A person spreads lies and insults the King, making people angry and confused.",
+            answer: "left", // Derhaka
+            explanation: "Correct! Spreading lies about the leader is an act of 'Derhaka'."
+        }
+    ];
+
+    // Load Question
+    function showQuestion() {
+        if (currentLevel < questions.length) {
+            scenarioElement.innerText = questions[currentLevel].text;
+            explanationElement.innerText = "";
+            feedbackElement.innerText = "";
+            nextBtn.style.display = "none";
+            canAnswer = true;
+        } else {
+            scenarioElement.innerText = "🎉 Game Finished! You are a loyal citizen!";
+        }
+    }
+
+    function nextQuestion() {
+        currentLevel++;
+        showQuestion();
+    }
+
+    // Handle the Answer
+    function handleSelection(direction) {
+        if (!canAnswer) return;
+        
+        const correctDir = questions[currentLevel].answer;
+        if (direction === correctDir) {
+            feedbackElement.innerText = "✅ CORRECT!";
+            feedbackElement.style.color = "green";
+            explanationElement.innerText = questions[currentLevel].explanation;
+            canAnswer = false;
+            nextBtn.style.display = "inline-block";
+        } else {
+            feedbackElement.innerText = "❌ TRY AGAIN!";
+            feedbackElement.style.color = "red";
+        }
+    }
+
+    // MediaPipe Setup
+    const faceMesh = new FaceMesh({
+        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
+    });
+
+    faceMesh.setOptions({
+        maxNumFaces: 1,
+        refineLandmarks: true,
+        minDetectionConfidence: 0.5,
+        minTrackingConfidence: 0.5
+    });
+
+    faceMesh.onResults((results) => {
+        if (!results.multiFaceLandmarks || results.multiFaceLandmarks.length === 0) return;
+
+        const landmarks = results.multiFaceLandmarks[0];
+        // We compare the Nose Tip (index 4) with the forehead or general center
+        const nose = landmarks[4];
+        
+        // Tilt Detection Logic (Simple X-axis threshold)
+        // Values in MediaPipe are 0.0 to 1.0. 0.5 is center.
+        if (nose.x < 0.4) { // Tilted Right (Mirrored)
+            handleSelection("right");
+        } else if (nose.x > 0.6) { // Tilted Left (Mirrored)
+            handleSelection("left");
+        }
+    });
+
+    // Start Camera
+    async function startCamera() {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        videoElement.srcObject = stream;
+        
+        // Loop the detection
+        async function detectionLoop() {
+            await faceMesh.send({ image: videoElement });
+            requestAnimationFrame(detectionLoop);
+        }
+        detectionLoop();
+        showQuestion();
+    }
+
+    startCamera();
+</script>
+
+</body>
+</html>
